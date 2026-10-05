@@ -67,7 +67,7 @@ def generate_launch_description():
 
     kinect2_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(kinect2_launch_dir, 'include_kinect2_bridge.launch.py')
+            os.path.join(kinect2_launch_dir, 'include', 'include_kinect2_bridge.launch.py')
         )
     )
 

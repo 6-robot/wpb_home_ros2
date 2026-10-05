@@ -57,7 +57,7 @@ Visualization Manager:
       Description Source: Topic
       Description Topic:
         Depth: 5
-        Durability Policy: Volatile
+        Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /robot_description
@@ -186,7 +186,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /kinect2/qhd/image_color_rect
+        Value: /kinect2/qhd/image_raw_rect
       Value: true
   Enabled: true
   Global Options:

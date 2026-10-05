@@ -1,5 +1,9 @@
+#include <algorithm>
+#include <cmath>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/int32_multi_array.hpp>
+#include <std_msgs/msg/u_int64.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <geometry_msgs/msg/twist.hpp>
@@ -13,6 +17,7 @@
 std::shared_ptr<rclcpp::Node> node;
 static CWPB_Home_driver m_wpb_home;
 static int nLastMotorPos[3];
+static int arOutput[8] = {};
 
 static float fKVx = 1.0f/sqrt(3.0f);
 static float fKVy = 2.0f/3.0f;
@@ -28,38 +33,55 @@ void CmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 }
 
 static float kForearm = 1.57/11200;
-static float fLiftValue = 0;
-static float fLiftVelocity = 0;
-static float fGripperValue = 0;
-static float fGripperVelocity = 0;
+static double defaultLiftVelocity = 0.5;
+static double defaultGripperVelocity = 5.0;
 void ManiCtrlCallback(const sensor_msgs::msg::JointState::SharedPtr msg)
 {
-  // int nNumJoint = msg->position.size();
-  // for(int i=0;i<nNumJoint;i++)
-  // {
-  //     RCLCPP_INFO(node->get_logger(), "%d - %s = %.2f  vel= %.2f", i, msg->name[i].c_str(),msg->position[i],msg->velocity[i]);
-  // }
-  // 高度升降
-  fLiftValue = msg->position[0];
-  fLiftVelocity = msg->velocity[0];
-  // 手爪
-  fGripperValue = msg->position[1];
-  fGripperVelocity = msg->velocity[1];
+  if (msg->position.size() < 2)
+  {
+    RCLCPP_WARN(node->get_logger(), "mani_ctrl requires lift and gripper positions");
+    return;
+  }
+  // 保留 lift、gripper 的位置顺序；兼容 demo_cpp 中省略 velocity 的命令。
+  const double fLiftValue = msg->position[0];
+  const double fGripperValue = msg->position[1];
+  const double fLiftVelocity = msg->velocity.empty() ? defaultLiftVelocity : msg->velocity[0];
+  const double fGripperVelocity = msg->velocity.size() < 2 ? defaultGripperVelocity : msg->velocity[1];
+  if (!std::isfinite(fLiftValue) || !std::isfinite(fGripperValue) ||
+      !std::isfinite(fLiftVelocity) || !std::isfinite(fGripperVelocity) ||
+      fLiftVelocity < 0 || fGripperVelocity < 0)
+  {
+    RCLCPP_WARN(node->get_logger(), "mani_ctrl requires finite positions and nonnegative velocities");
+    return;
+  }
 
   m_wpb_home.ManiCmd(fLiftValue, fLiftVelocity, fGripperValue, fGripperVelocity);
 }
 
 void CtrlCallback(const std_msgs::msg::String::SharedPtr msg)
 {
-    int nFindIndex = 0;
-    nFindIndex = msg->data.find("pose_diff reset");
-    if( nFindIndex >= 0 )
+    if (msg->data.find("pose_diff reset") != std::string::npos)
     {
         pose_diff_msg.x = 0;
         pose_diff_msg.y = 0;
         pose_diff_msg.theta = 0;
         //RCLCPP_INFO(node->get_logger(),"[pose_diff reset]");
     }
+    if (msg->data.find("sound local") != std::string::npos)
+    {
+        m_wpb_home.QuerySoundLocal();
+    }
+}
+
+void OutputCallback(const std_msgs::msg::Int32MultiArray::SharedPtr msg)
+{
+    // 与 ROS1 一致：只更新提供的前八路，未提供的通道保持上次状态。
+    const auto count = std::min(msg->data.size(), size_t{8});
+    for (size_t i = 0; i < count; ++i)
+    {
+        arOutput[i] = msg->data[i];
+    }
+    m_wpb_home.Output(arOutput);
 }
 
 int main(int argc, char * argv[])
@@ -74,8 +96,10 @@ int main(int argc, char * argv[])
     m_wpb_home.Open(strSerialPort.c_str(),115200);
     RCLCPP_INFO(node->get_logger(), "机器人底盘端口 = %s", strSerialPort.c_str());
 
-    bool bOdom = true;
-    node->get_parameter_or("odom", bOdom, true);
+    const bool bOdom = node->declare_parameter<bool>("odom", true);
+    const bool bImu = node->declare_parameter<bool>("imu", true);
+    defaultLiftVelocity = node->declare_parameter<double>("mani_default_lift_velocity", 0.5);
+    defaultGripperVelocity = node->declare_parameter<double>("mani_default_gripper_velocity", 5.0);
 
     // 计时变量
     rclcpp::Time current_time = node->now();
@@ -152,6 +176,16 @@ int main(int argc, char * argv[])
 
     // IMU
     auto imu_pub = node->create_publisher<sensor_msgs::msg::Imu>("imu/data", 10);
+
+    // AD、数字 IO 和声源定位：复用现有串口驱动的解析结果和命令。
+    auto ad_pub = node->create_publisher<std_msgs::msg::Int32MultiArray>("/wpb_home/ad", 10);
+    auto input_pub = node->create_publisher<std_msgs::msg::Int32MultiArray>("/wpb_home/input", 10);
+    auto output_sub = node->create_subscription<std_msgs::msg::Int32MultiArray>(
+        "/wpb_home/output", 10, OutputCallback);
+    auto sound_source_pub = node->create_publisher<std_msgs::msg::UInt64>(
+        "/wpb_home/sound_source", 10);
+    std_msgs::msg::Int32MultiArray ad_msg;
+    std_msgs::msg::Int32MultiArray input_msg;
 
     // 底盘运动
     auto cmd_vel_sub = node->create_subscription<geometry_msgs::msg::Twist>("cmd_vel", 10, CmdVelCallback);
@@ -268,23 +302,39 @@ int main(int argc, char * argv[])
         //ROS_INFO("[pose_diff_msg] x= %.2f  y=%.2f  th= %.2f", pose_diff_msg.x,pose_diff_msg.y,pose_diff_msg.theta);
         
         // IMU 发布
-        sensor_msgs::msg::Imu imu_msg;	
-        imu_msg.header.stamp = node->now();
-        imu_msg.header.frame_id = "imu";
-        imu_msg.orientation.x = m_wpb_home.fQuatX;
-        imu_msg.orientation.y = m_wpb_home.fQuatY;
-        imu_msg.orientation.z = m_wpb_home.fQuatZ;
-        imu_msg.orientation.w = m_wpb_home.fQuatW;
+        if (bImu)
+        {
+            sensor_msgs::msg::Imu imu_msg;
+            imu_msg.header.stamp = node->now();
+            imu_msg.header.frame_id = "imu";
+            imu_msg.orientation.x = m_wpb_home.fQuatX;
+            imu_msg.orientation.y = m_wpb_home.fQuatY;
+            imu_msg.orientation.z = m_wpb_home.fQuatZ;
+            imu_msg.orientation.w = m_wpb_home.fQuatW;
 
-        imu_msg.angular_velocity.x = m_wpb_home.fGyroX;
-        imu_msg.angular_velocity.y = m_wpb_home.fGyroY;
-        imu_msg.angular_velocity.z = m_wpb_home.fGyroZ;
+            imu_msg.angular_velocity.x = m_wpb_home.fGyroX;
+            imu_msg.angular_velocity.y = m_wpb_home.fGyroY;
+            imu_msg.angular_velocity.z = m_wpb_home.fGyroZ;
 
-        imu_msg.linear_acceleration.x = m_wpb_home.fAccX;
-        imu_msg.linear_acceleration.y = m_wpb_home.fAccY;
-        imu_msg.linear_acceleration.z = m_wpb_home.fAccZ;
+            imu_msg.linear_acceleration.x = m_wpb_home.fAccX;
+            imu_msg.linear_acceleration.y = m_wpb_home.fAccY;
+            imu_msg.linear_acceleration.z = m_wpb_home.fAccZ;
 
-        imu_pub->publish(imu_msg);
+            imu_pub->publish(imu_msg);
+        }
+
+        ad_msg.data.assign(m_wpb_home.arValAD, m_wpb_home.arValAD + 15);
+        ad_pub->publish(ad_msg);
+        input_msg.data.assign(m_wpb_home.arValIOInput, m_wpb_home.arValIOInput + 4);
+        input_pub->publish(input_msg);
+
+        if (m_wpb_home.bSndSrcUpdated)
+        {
+            std_msgs::msg::UInt64 sound_source_msg;
+            sound_source_msg.data = m_wpb_home.nSndSrcAngle;
+            sound_source_pub->publish(sound_source_msg);
+            m_wpb_home.bSndSrcUpdated = false;
+        }
 
         // 发布手臂TF
         joint_msg.header.stamp = node->now();

@@ -9,7 +9,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description():
     urdf_tutorial_path = get_package_share_path('wpb_home_description')
     default_model_path = urdf_tutorial_path / 'urdf/wpb_home_mani.urdf'
-    default_rviz_config_path = urdf_tutorial_path / 'rviz/urdf.rviz'
+    default_rviz_config_path = get_package_share_path('wpb_home_bringup') / 'rviz/urdf.rviz'
 
     gui_arg = DeclareLaunchArgument(name='gui', default_value='false', choices=['true', 'false'],
                                     description='Flag to enable joint_state_publisher_gui')

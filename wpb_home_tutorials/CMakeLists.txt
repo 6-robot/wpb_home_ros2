@@ -1,31 +1,51 @@
 cmake_minimum_required(VERSION 3.8)
 project(wpb_home_tutorials)
-
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
-
-# find dependencies
 find_package(ament_cmake REQUIRED)
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
-
-install(DIRECTORY
-  rviz launch maps config
-  DESTINATION share/${PROJECT_NAME}
-  )
-
+foreach(dep rclcpp rclcpp_action nav2_msgs std_msgs geometry_msgs sensor_msgs tf2 tf2_ros cv_bridge
+    pcl_conversions pcl_ros visualization_msgs wpr_simulation2 wpb_home_behaviors)
+  find_package(${dep} REQUIRED)
+endforeach()
+find_package(OpenCV REQUIRED)
+include_directories(include)
+function(reference_example number name)
+  add_executable(ex${number}_${name} examples/exp${number}/ex${number}_${name}.cpp)
+  ament_target_dependencies(ex${number}_${name} rclcpp ${ARGN})
+  install(TARGETS ex${number}_${name} DESTINATION lib/${PROJECT_NAME})
+endfunction()
+reference_example(01 my_node)
+reference_example(03 velocity geometry_msgs)
+reference_example(04 lidar sensor_msgs)
+reference_example(05 lidar_behavior sensor_msgs geometry_msgs)
+reference_example(06 imu_data sensor_msgs tf2)
+reference_example(07 imu_behavior sensor_msgs geometry_msgs tf2)
+reference_example(10 waypoint std_msgs)
+reference_example(12 image sensor_msgs cv_bridge OpenCV)
+reference_example(12 hsv sensor_msgs cv_bridge OpenCV)
+reference_example(13 pointcloud sensor_msgs pcl_conversions pcl_ros)
+reference_example(14 face sensor_msgs cv_bridge OpenCV)
+reference_example(15 objects sensor_msgs pcl_conversions pcl_ros tf2_ros)
+reference_example(16 manipulator sensor_msgs geometry_msgs)
+reference_example(17 grab std_msgs geometry_msgs sensor_msgs wpr_simulation2)
+reference_example(18 tts std_msgs)
+reference_example(19 recognition std_msgs)
+reference_example(20 fetch std_msgs geometry_msgs rclcpp_action nav2_msgs)
+add_executable(objects_publisher src/support/objects_publisher.cpp)
+ament_target_dependencies(objects_publisher rclcpp wpb_home_behaviors)
+install(TARGETS objects_publisher DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS src/support/face_detector.py src/support/check_runtime.py DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY rviz launch maps config examples DESTINATION share/${PROJECT_NAME}
+  PATTERN "__pycache__" EXCLUDE PATTERN "*.pyc" EXCLUDE)
+install(DIRECTORY include/ DESTINATION include)
+ament_export_include_directories(include)
+ament_export_dependencies(rclcpp geometry_msgs)
 if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
-  set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
-  set(ament_cmake_cpplint_FOUND TRUE)
-  ament_lint_auto_find_test_dependencies()
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(tutorial_interfaces test/test_tutorial_interfaces.py TIMEOUT 120
+    ENV TUTORIAL_BIN_DIR=${CMAKE_CURRENT_BINARY_DIR} ROS_LOCALHOST_ONLY=1)
 endif()
-
 ament_package()

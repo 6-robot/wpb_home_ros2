@@ -1,0 +1,70 @@
+# Startup parameters. Copy this file to a writable location for robot calibration.
+velocity_command_node:
+  ros__parameters:
+    linear_x: 0.1
+    linear_y: 0.0
+    angular_z: 0.0
+    duration: 0.0  # 0: keep publishing until Ctrl+C
+lidar_behavior_node:
+  ros__parameters:
+    obstacle_distance: 1.5
+    forward_speed: 0.1
+    turn_speed: 0.3
+    turn_scan_count: 100
+    scan_timeout: 0.5
+imu_behavior_node:
+  ros__parameters:
+    target_yaw: 90.0
+    yaw_gain: 0.01
+    forward_speed: 0.1
+    max_turn_speed: 0.5
+    imu_timeout: 0.5
+pointcloud_data_node:
+  ros__parameters:
+    max_points: 10
+pointcloud_objects_node:
+  ros__parameters:
+    object_min_height: 0.02
+cv_hsv_node:
+  ros__parameters:
+    low_h: 10
+    high_h: 40
+    low_s: 90
+    high_s: 255
+    low_v: 1
+    high_v: 255
+mani_ctrl_node:
+  ros__parameters:
+    pose_interval: 3.333333333
+    low_height: 0.0
+    high_height: 1.0
+    closed_width: 0.01
+    open_width: 0.1
+wpb_home_objects_3d:
+  ros__parameters:
+    auto_start: false
+    object_min_height: 0.02
+    cluster_tolerance: 0.03
+    min_cluster_size: 30
+wpb_home_grab_server:
+  ros__parameters:
+    align_x: 1.0
+    align_y: 0.0
+    align_gain: 0.8
+    max_align_speed: 0.15
+    gripper_reach: 0.65
+    approach_speed: 0.1
+    approach_seconds_per_meter: 9.0
+    max_approach_time: 15.0
+    lift_offset: 0.0
+    max_lift: 1.2
+    open_width: 0.15
+    grip_width: 0.07
+    raise_height: 0.05
+    lift_wait: 8.0
+    grip_wait: 5.0
+    raise_wait: 5.0
+    retreat_speed: 0.1
+    retreat_time: 5.0
+    object_timeout: 1.0
+    detection_timeout: 30.0

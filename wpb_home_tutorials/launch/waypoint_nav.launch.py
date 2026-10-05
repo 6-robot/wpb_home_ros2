@@ -1,86 +1,32 @@
-#!/usr/bin/env python3
-#
-# Copyright 2024 6-robot.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Authors: Zhang Wanjie
-
+"""Textbook waypoint editing and navigation with wp_map_tools."""
 import os
+from ament_index_python.packages import get_package_share_directory as share
 from launch import LaunchDescription
-from launch_ros.actions import Node
-from ament_index_python.packages import get_package_share_directory
-from launch.actions import IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration as LC
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+
 
 def generate_launch_description():
-    launch_file_dir = os.path.join(get_package_share_directory('wpb_home_bringup'), 'launch')
-    wpb_home_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'base_lidar.launch.py')
-        )
-    )
-
-    map_file = os.path.join(
-        get_package_share_directory('wpb_home_tutorials'),
-        'maps',
-        'map.yaml'
-    )
-
-    nav_param_file = os.path.join(
-        get_package_share_directory('wpb_home_tutorials'),
-        'config',
-        'nav2_params.yaml'
-    )
-
-    nav2_launch_dir = os.path.join(
-        get_package_share_directory('nav2_bringup'),
-        'launch'
-    )
-
-    navigation_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([nav2_launch_dir, '/bringup_launch.py']),
-        launch_arguments={
-            'map': map_file,
-            'use_sim_time': 'False',
-            'params_file': nav_param_file}.items(),
-    )
-
-    rviz_file = os.path.join(get_package_share_directory('wpb_home_tutorials'), 'rviz', 'navi_waypoint.rviz')
-    rviz_cmd = Node(
-        package='rviz2',
-        executable='rviz2',
-        name='rviz2',
-        arguments=['-d', rviz_file]
-    )
-
-    wp_edit_cmd = Node(
-        package='wp_map_tools',
-        executable='wp_edit_node',
-        name='wp_edit_node'
-    )
-
-    wp_navi_server_cmd = Node(
-        package='wp_map_tools',
-        executable='wp_navi_server',
-        name='wp_navi_server'
-    )
-
-    ld = LaunchDescription()
-    ld.add_action(wpb_home_launch)
-    ld.add_action(navigation_cmd)
-    ld.add_action(rviz_cmd)
-    ld.add_action(wp_edit_cmd)
-    ld.add_action(wp_navi_server_cmd)
-
-    return ld
+    package = share('wpb_home_tutorials')
+    common = {'use_sim_time': ParameterValue(LC('use_sim_time'), value_type=bool)}
+    return LaunchDescription([
+        DeclareLaunchArgument('map', default_value=os.path.join(package, 'maps', 'map.yaml')),
+        DeclareLaunchArgument('waypoints', default_value=os.path.expanduser('~/waypoint.xml'), description='Saved waypoint file in the home directory'),
+        DeclareLaunchArgument('start_hardware', default_value='true'),
+        DeclareLaunchArgument('kinect', default_value='false'),
+        DeclareLaunchArgument('use_sim_time', default_value='false'),
+        DeclareLaunchArgument('rviz', default_value='true'),
+        DeclareLaunchArgument('rviz_config', default_value=os.path.join(package, 'rviz', 'navi_waypoint.rviz')),
+        IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(
+            package, 'launch', 'navigation.launch.py')),
+            launch_arguments={'map': LC('map'), 'start_hardware': LC('start_hardware'),
+                              'kinect': LC('kinect'), 'use_sim_time': LC('use_sim_time'),
+                              'rviz': LC('rviz'), 'rviz_config': LC('rviz_config')}.items()),
+        Node(package='wp_map_tools', executable='wp_edit_node', name='wp_edit_node',
+             output='screen', parameters=[common, {'load': LC('waypoints')}]),
+        Node(package='wp_map_tools', executable='wp_navi_server', name='wp_navi_server',
+             output='screen', parameters=[common]),
+    ])

@@ -1,77 +1,30 @@
-from launch import LaunchDescription
-from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
-from launch.substitutions import LaunchConfiguration, Command, FindExecutable, PathJoinSubstitution, FindPackage
-from launch_ros.substitutions import FindPackageShare
-from ament_index_python.packages import get_package_share_directory
+"""Display the real arm feedback using the description package's model."""
 import os
+from ament_index_python.packages import get_package_share_directory as share
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration as LC, Command
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+
 
 def generate_launch_description():
-    # Declare launch arguments
-    declare_model_arg = DeclareLaunchArgument(
-        'model',
-        default_value=PathJoinSubstitution([FindPackageShare('wpb_home_bringup'), 'urdf', 'wpb_home_mani.urdf']),
-        description='Path to the robot urdf file'
-    )
-
-    declare_gui_arg = DeclareLaunchArgument(
-        'gui',
-        default_value='false',
-        description='Flag to enable GUI'
-    )
-
-    declare_rvizconfig_arg = DeclareLaunchArgument(
-        'rvizconfig',
-        default_value=PathJoinSubstitution([FindPackageShare('wpb_home_bringup'), 'rviz', 'urdf.rviz']),
-        description='Path to the RViz config file'
-    )
-
-    # Set robot_description parameter using xacro
-    set_robot_description = ExecuteProcess(
-        cmd=[
-            PathJoinSubstitution([FindExecutable(name='xacro')]),
-            LaunchConfiguration('model')
-        ],
-        output='screen',
-        shell=True
-    )
-
-    # robot_state_publisher node
-    robot_state_publisher_node = Node(
-        package='robot_state_publisher',
-        executable='robot_state_publisher',
-        name='robot_state_publisher',
-        output='screen',
-        parameters=[{'robot_description': Command([PathJoinSubstitution([FindExecutable(name='xacro')]), ' ', LaunchConfiguration('model')])}],
-    )
-
-    # rviz node
-    rviz_node = Node(
-        package='rviz2',
-        executable='rviz2',
-        name='rviz',
-        arguments=['-d', LaunchConfiguration('rvizconfig')],
-        output='screen',
-    )
-
-    # wpb_home_core node
-    wpb_home_core_node = Node(
-        package='wpb_home_bringup',
-        executable='wpb_home_core',
-        name='wpb_home_core',
-        output='screen',
-        parameters=[
-            {'serial_port': '/dev/ftdi'},
-            PathJoinSubstitution([FindPackageShare('wpb_home_bringup'), 'config', 'wpb_home.yaml'])
-        ],
-    )
-
+    bringup = share('wpb_home_bringup')
     return LaunchDescription([
-        declare_model_arg,
-        declare_gui_arg,
-        declare_rvizconfig_arg,
-        set_robot_description,
-        robot_state_publisher_node,
-        rviz_node,
-        wpb_home_core_node
+        DeclareLaunchArgument('model', default_value=os.path.join(
+            share('wpb_home_description'), 'urdf', 'wpb_home_mani.urdf')),
+        DeclareLaunchArgument('serial_port', default_value='/dev/ftdi'),
+        DeclareLaunchArgument('config', default_value=os.path.join(
+            bringup, 'config', 'wpb_home.yaml')),
+        DeclareLaunchArgument('rviz', default_value='true'),
+        DeclareLaunchArgument('rvizconfig', default_value=os.path.join(
+            bringup, 'rviz', 'urdf.rviz')),
+        Node(package='robot_state_publisher', executable='robot_state_publisher',
+             parameters=[{'robot_description': ParameterValue(
+                 Command(['xacro ', LC('model')]), value_type=str)}]),
+        Node(package='rviz2', executable='rviz2', condition=IfCondition(LC('rviz')),
+             arguments=['-d', LC('rvizconfig')]),
+        Node(package='wpb_home_bringup', executable='wpb_home_core', name='wpb_home_core',
+             output='screen', parameters=[LC('config'), {'serial_port': LC('serial_port')}]),
     ])

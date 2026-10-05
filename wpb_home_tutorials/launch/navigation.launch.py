@@ -1,78 +1,44 @@
-#!/usr/bin/env python3
-#
-# Copyright 2024 6-robot.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Authors: Zhang Wanjie
-
+"""Nav2 on the real robot; map is supplied by the experiment operator."""
 import os
-from ament_index_python.packages import get_package_share_directory
-from ament_index_python.packages import get_package_share_path
+from ament_index_python.packages import get_package_share_directory as share
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.actions import IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.parameter_descriptions import ParameterValue
-from launch.substitutions import Command, LaunchConfiguration
+from launch.substitutions import LaunchConfiguration as LC
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+
+
+def check_map(context):
+    path = LC('map').perform(context)
+    if not os.path.isfile(path):
+        raise RuntimeError('Map YAML does not exist: ' + path + '. Save a map first.')
+    return []
+
 
 def generate_launch_description():
-    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
-    launch_file_dir = os.path.join(get_package_share_directory('wpb_home_bringup'), 'launch')
-    wpb_home_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, 'base_lidar.launch.py')
-        )
-    )
-
-    map_file = os.path.join(
-        get_package_share_directory('wpb_home_tutorials'),
-        'maps',
-        'map.yaml'
-    )
-    
-    nav_param_file = os.path.join(
-        get_package_share_directory('wpb_home_tutorials'),
-        'config',
-        'nav2_params.yaml'
-    )
-
-    nav2_launch_dir = os.path.join(
-        get_package_share_directory('nav2_bringup'), 
-        'launch'
-    )
-
-    navigation_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([nav2_launch_dir, '/bringup_launch.py']),
-        launch_arguments={
-            'map': map_file,
-            'use_sim_time': use_sim_time,
-            'params_file': nav_param_file}.items(),
-    )
-
-    rviz_cmd = Node(
-            package='rviz2',
-            executable='rviz2',
-            name='rviz2',
-            arguments=['-d', [os.path.join(get_package_share_directory('wpb_home_tutorials'), 'rviz', 'navi.rviz')]]
-        )
-
-    ld = LaunchDescription()
-
-    # Add the commands to the launch description
-    ld.add_action(wpb_home_launch)
-    ld.add_action(navigation_cmd)
-    ld.add_action(rviz_cmd)
-
-    return ld
+    package = share('wpb_home_tutorials')
+    return LaunchDescription([
+        DeclareLaunchArgument('map', default_value=os.path.join(package, 'maps', 'map.yaml'),
+                              description='Absolute path to a saved map YAML'),
+        DeclareLaunchArgument('start_hardware', default_value='true'),
+        DeclareLaunchArgument('kinect', default_value='false'),
+        DeclareLaunchArgument('use_sim_time', default_value='false'),
+        DeclareLaunchArgument('rviz', default_value='true'),
+        DeclareLaunchArgument('rviz_config', default_value=os.path.join(package, 'rviz', 'navi.rviz')),
+        DeclareLaunchArgument('params_file', default_value=os.path.join(package, 'config', 'nav2_params.yaml')),
+        OpaqueFunction(function=check_map),
+        IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(
+            package, 'launch', 'hardware.launch.py')),
+            condition=IfCondition(LC('start_hardware')),
+            launch_arguments={'lidar': 'true', 'kinect': LC('kinect'),
+                              'use_sim_time': LC('use_sim_time')}.items()),
+        IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(
+            share('nav2_bringup'), 'launch', 'bringup_launch.py')),
+            launch_arguments={'map': LC('map'), 'use_sim_time': LC('use_sim_time'),
+                              'params_file': LC('params_file'), 'use_composition': 'False'}.items()),
+        Node(package='rviz2', executable='rviz2', condition=IfCondition(LC('rviz')),
+             parameters=[{'use_sim_time': ParameterValue(LC('use_sim_time'), value_type=bool)}],
+             arguments=['-d', LC('rviz_config')]),
+    ])

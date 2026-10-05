@@ -38,6 +38,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joy.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <chrono>
 
 using std::placeholders::_1;
 
@@ -55,6 +56,7 @@ private:
   float lx;
   float ly;
   float ry;
+  std::chrono::steady_clock::time_point last_joy_;
 };
 
 TeleopJoy::TeleopJoy()
@@ -69,11 +71,16 @@ TeleopJoy::TeleopJoy()
 
 void TeleopJoy::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy)
 {
+  if (joy->axes.size() < 4) {
+    RCLCPP_WARN(this->get_logger(), "Joystick needs at least four axes");
+    return;
+  }
   lx = joy->axes[1];  // forward & backward
   ly = joy->axes[0];  // shift
   ry = joy->axes[3];  // rotation
   
   bStart = true;
+  last_joy_ = std::chrono::steady_clock::now();
 }
 
 void TeleopJoy::send_vel_cmd()
@@ -82,9 +89,11 @@ void TeleopJoy::send_vel_cmd()
     return;
 
   auto vel_cmd = geometry_msgs::msg::Twist();
-  vel_cmd.linear.x = lx * 0.2;
-  vel_cmd.linear.y = ly * 0.2;
-  vel_cmd.angular.z = ry * 0.5;
+  if (std::chrono::steady_clock::now() - last_joy_ < std::chrono::milliseconds(500)) {
+    vel_cmd.linear.x = lx * 0.2;
+    vel_cmd.linear.y = ly * 0.2;
+    vel_cmd.angular.z = ry * 0.5;
+  }
 
   velcmd_pub_->publish(vel_cmd);
 }

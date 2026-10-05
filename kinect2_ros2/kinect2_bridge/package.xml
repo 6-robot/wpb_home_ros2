@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>kinect2_bridge</name>
+  <version>0.0.1</version>
+  <description>Kinect v2 images, calibration loading and point clouds for ROS2</description>
+  <maintainer email="wiedemeyer@informatik.uni-bremen.de">Thiemo Wiedemeyer</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>kinect2_registration</depend>
+  <exec_depend>depth_image_proc</exec_depend>
+  <exec_depend>rclcpp_components</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>ros2launch</exec_depend>
+  <exec_depend>rtabmap_odom</exec_depend>
+  <exec_depend>rtabmap_slam</exec_depend>
+  <exec_depend>rtabmap_viz</exec_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>
