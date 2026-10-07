@@ -22,7 +22,7 @@ int main(int argc, char * argv[])
   mani_msg.position[0] = 0.0;
   mani_msg.position[1] = 0.0;
 
-  rclcpp::Rate loop_rate(0.3);
+  rclcpp::Rate loop_rate(0.1);
 
   while (rclcpp::ok()) 
   {

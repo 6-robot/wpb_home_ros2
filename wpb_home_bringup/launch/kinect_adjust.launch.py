@@ -1,4 +1,5 @@
 import os
+import yaml
 
 from ament_index_python.packages import get_package_share_path, get_package_share_directory
 
@@ -39,6 +40,8 @@ def generate_launch_description():
         'config',
         'wpb_home.yaml'
     )
+    with open(config_file, encoding='utf-8') as config_stream:
+        camera_parameters = yaml.safe_load(config_stream)['wpb_home_core']['ros__parameters']
     wpb_home_core = Node(
         package='wpb_home_bringup',
         executable='wpb_home_core',
@@ -51,7 +54,10 @@ def generate_launch_description():
     joint_state_publisher_gui_node = Node(
         package='joint_state_publisher_gui',
         executable='joint_state_publisher_gui',
-        parameters=[{'zeros.kinect_height': 1.37, 'zeros.kinect_pitch': -0.50}],
+        parameters=[{
+            'zeros.kinect_height': float(camera_parameters['kinect_height']),
+            'zeros.kinect_pitch': float(camera_parameters['kinect_pitch'])
+        }],
         condition=IfCondition(LaunchConfiguration('gui'))
     )
 

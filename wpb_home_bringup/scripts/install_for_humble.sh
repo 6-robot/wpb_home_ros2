@@ -20,7 +20,7 @@ sudo apt install -y qtbase5-dev libyaml-cpp-dev libtinyxml2-dev ros-humble-tinyx
 sudo apt install -y ros-dev-tools
 sudo apt install -y python3-pip
 sudo apt install -y python3-colcon-common-extensions
-sudo apt install -y python3-rosdep python3-serial git
+sudo apt install -y python3-rosdep python3-serial python3-yaml git
 sudo apt install -y python3-argcomplete
 sudo apt install -y pcl-tools
 

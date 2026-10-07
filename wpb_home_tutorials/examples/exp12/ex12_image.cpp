@@ -9,9 +9,9 @@ std::shared_ptr<rclcpp::Node> node;
 void CamRGBCallback(const sensor_msgs::msg::Image::SharedPtr msg)
 {
     cv_bridge::CvImagePtr cv_ptr;
-cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+    cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
 
-cv::Mat imgOriginal = cv_ptr->image;
+    cv::Mat imgOriginal = cv_ptr->image;
     cv::imshow("RGB", imgOriginal);
     cv::waitKey(1);
 }
@@ -22,7 +22,7 @@ int main(int argc, char **argv)
     node = std::make_shared<rclcpp::Node>("cv_image_node");
 
     auto rgb_sub = node->create_subscription<sensor_msgs::msg::Image>(
-        "/kinect2/qhd/image_raw", rclcpp::SensorDataQoS(), CamRGBCallback);
+        "/kinect2/qhd/image_raw", 1, CamRGBCallback);
 
     cv::namedWindow("RGB");
 

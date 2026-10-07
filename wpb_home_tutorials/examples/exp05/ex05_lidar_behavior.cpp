@@ -8,7 +8,6 @@ int nCount = 0;
 
 void LidarCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
-    if (msg->ranges.empty()) { return; }
     int nNum = msg->ranges.size();
     
     int nMid = nNum / 2;
@@ -41,7 +40,7 @@ int main(int argc, char** argv)
     node = std::make_shared<rclcpp::Node>("lidar_behavior_node");
 
     vel_pub = node->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
-    auto lidar_sub = node->create_subscription<sensor_msgs::msg::LaserScan>("/scan", rclcpp::SensorDataQoS(), LidarCallback);
+    auto lidar_sub = node->create_subscription<sensor_msgs::msg::LaserScan>("/scan", 10, LidarCallback);
 
     rclcpp::spin(node);
 

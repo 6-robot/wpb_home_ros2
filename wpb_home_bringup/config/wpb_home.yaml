@@ -1,7 +1,7 @@
 wpb_home_core:
   ros__parameters:
-    kinect_height: 1.37
-    kinect_pitch: -0.50
+    kinect_height: 1.37  # Kinect2 高度（m），填写实验十一中地面点云贴合栅格时的数值
+    kinect_pitch: -0.50 # Kinect2 俯仰角（rad），后续检测与抓取通过 TF 使用此标定值
 
     grab_y_offset: 0.0         # 抓取前，对准物品，机器人的横向位移偏移量。大-往左修正；小-往右修正
     grab_lift_offset: 0.0      # 手臂抬起高度的补偿偏移量。大-往高修正；小-往低修正

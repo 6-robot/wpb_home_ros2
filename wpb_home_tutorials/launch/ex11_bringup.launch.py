@@ -1,4 +1,4 @@
-"""Experiment 11 dependencies; start the student program separately."""
+"""Experiment 11: view Kinect2 data and calibrate camera height and pitch."""
 import os
 from ament_index_python.packages import get_package_share_directory as share
 from launch import LaunchDescription
@@ -7,10 +7,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 
 def generate_launch_description():
-    package = share('wpb_home_tutorials')
     return LaunchDescription([
         IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(
-            share('wpb_home_tutorials'), 'launch', 'hardware.launch.py')),
-            launch_arguments={'lidar': 'false', 'kinect': 'true',
-                              'joy': 'false', 'use_sim_time': 'false'}.items()),
+            share('wpb_home_bringup'), 'launch', 'kinect_adjust.launch.py'))),
     ])

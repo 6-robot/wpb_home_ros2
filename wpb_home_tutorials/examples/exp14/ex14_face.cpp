@@ -38,7 +38,7 @@ int main(int argc, char **argv)
     node = std::make_shared<rclcpp::Node>("cv_face_detect");
 
     auto rgb_sub = node->create_subscription<sensor_msgs::msg::Image>(
-        "/kinect2/qhd/image_raw", rclcpp::SensorDataQoS(), CamRGBCallback);
+        "/kinect2/qhd/image_raw", 1, CamRGBCallback);
     frame_pub = node->create_publisher<sensor_msgs::msg::Image>(
         "/face_detector_input", 1);
     auto face_sub = node->create_subscription<sensor_msgs::msg::RegionOfInterest>(

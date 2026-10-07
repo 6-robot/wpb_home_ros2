@@ -47,13 +47,10 @@ cd ~/ros2_ws/src
 git clone https://github.com/6-robot/wpb_home_ros2.git
 git clone https://github.com/6-robot/wp_map_tools.git
 git clone https://github.com/6-robot/wpr_simulation2.git
+git clone https://github.com/6-robot/wp_speech
 ```
 
-语音功能由独立软件包 **`wp_speech`** 提供。将配套源码中的 `wp_speech` 目录复制到同一个 `src` 中，再执行统一安装脚本。下列 `/path/to/wp_speech` 需要替换为该包的实际来源路径：
-
-```bash
-cp -a /path/to/wp_speech ~/ros2_ws/src/
-```
+语音功能由独立的 [wp_speech](https://github.com/6-robot/wp_speech) 提供，以上命令将其克隆到同一个 `src` 中。获取全部源码后，再执行统一安装脚本。
 
 准备完成后，目录结构如下。各项目应使用配套版本。
 

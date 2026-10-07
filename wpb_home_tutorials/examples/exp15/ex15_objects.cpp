@@ -127,7 +127,7 @@ int main(int argc, char **argv)
 
   auto pc_sub = node->create_subscription<sensor_msgs::msg::PointCloud2>(
     "/kinect2/sd/points",
-    rclcpp::SensorDataQoS(),
+    1,
     PointcloudCallback
   );
 

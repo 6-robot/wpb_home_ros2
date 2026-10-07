@@ -6,7 +6,7 @@ int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("speak_node");
-  const std::string text = "你好，欢迎使用启智机器人";
+  const std::string text = "你好，欢迎使用六部工坊启智机器人";
   auto pub = node->create_publisher<std_msgs::msg::String>("/tts/text", 10);
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
   while (rclcpp::ok() && pub->get_subscription_count() == 0 &&
