@@ -16,7 +16,7 @@ def generate_launch_description():
     nav_param_file = os.path.join(
         get_package_share_directory('wpb_home_tutorials'),
         'config',
-        'ex09_nav2.yaml'
+        'nav2_params.yaml'
     )
 
     nav2_launch_dir = os.path.join(

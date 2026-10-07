@@ -1,16 +1,46 @@
-"""Experiment 02 dependencies; start the student program separately."""
+"""实验02的配套节点；实验程序单独启动。"""
 import os
-from ament_index_python.packages import get_package_share_directory as share
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import Command
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
-    package = share('wpb_home_tutorials')
-    return LaunchDescription([
-        IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(
-            share('wpb_home_tutorials'), 'launch', 'hardware.launch.py')),
-            launch_arguments={'lidar': 'false', 'kinect': 'false',
-                              'joy': 'false', 'use_sim_time': 'false'}.items()),
-    ])
+    bringup_dir = get_package_share_directory('wpb_home_bringup')
+    config_file = os.path.join(bringup_dir, 'config', 'wpb_home.yaml')
+    model_file = os.path.join(
+        get_package_share_directory('wpb_home_description'), 'urdf', 'wpb_home_mani.urdf')
+
+    # 底盘驱动：从 wpb_home.yaml 加载 kinect_height、kinect_pitch 等参数。
+    wpb_home_core_cmd = Node(
+        package='wpb_home_bringup',
+        executable='wpb_home_core',
+        name='wpb_home_core',
+        output='screen',
+        parameters=[config_file, {
+            'serial_port': '/dev/ftdi',
+            'odom': True,
+            'imu': True,
+            'use_sim_time': False,
+        }],
+    )
+
+    # 发布机器人各关节的坐标变换。
+    robot_state_publisher_cmd = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        parameters=[{
+            'robot_description': ParameterValue(Command(['xacro ', model_file]), value_type=str),
+            'use_sim_time': False,
+        }],
+    )
+
+    ld = LaunchDescription()
+
+    ld.add_action(wpb_home_core_cmd)
+    ld.add_action(robot_state_publisher_cmd)
+
+    return ld
