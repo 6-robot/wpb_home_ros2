@@ -15,6 +15,8 @@ def generate_launch_description():
     config_file = os.path.join(bringup_dir, 'config', 'wpb_home.yaml')
     model_file = os.path.join(
         get_package_share_directory('wpb_home_description'), 'urdf', 'wpb_home_mani.urdf')
+    tutorials_dir = get_package_share_directory('wpb_home_tutorials')
+    rviz_file = os.path.join(tutorials_dir, 'rviz', 'pointcloud.rviz')
 
     # 底盘驱动：从 wpb_home.yaml 加载 kinect_height、kinect_pitch 等参数。
     wpb_home_core_cmd = Node(
@@ -47,11 +49,10 @@ def generate_launch_description():
         launch_arguments={'enable_qhd_points': 'true'}.items(),
     )
 
-    face_detector_cmd = Node(
-        package='wpb_home_tutorials',
-        executable='face_detector.py',
-        output='screen',
-        parameters=[{'use_sim_time': False}],
+    rviz_cmd = Node(
+        package='rviz2',
+        executable='rviz2',
+        arguments=['-d', rviz_file],
     )
 
     ld = LaunchDescription()
@@ -59,6 +60,6 @@ def generate_launch_description():
     ld.add_action(wpb_home_core_cmd)
     ld.add_action(robot_state_publisher_cmd)
     ld.add_action(kinect2_cmd)
-    ld.add_action(face_detector_cmd)
+    ld.add_action(rviz_cmd)
 
     return ld

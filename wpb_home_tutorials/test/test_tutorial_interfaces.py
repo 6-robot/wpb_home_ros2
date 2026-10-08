@@ -210,7 +210,7 @@ def test_face_image_forwarding_and_valid_roi(h):
     images = h.publisher(Image, '/kinect2/qhd/image_raw', sensor=True)
     rois = h.publisher(RegionOfInterest, '/face_position')
     forwarded = h.collect(Image, '/face_detector_input')
-    process = h.start('ex14_face')
+    process = h.start('ex13_face')
     h.wait(lambda: rois.get_subscription_count() > 0 and images.get_subscription_count() > 0)
     msg = Image(height=8, width=8, encoding='bgr8', step=24, data=bytes(192))
     h.wait(lambda: forwarded, tick=lambda: images.publish(msg))
