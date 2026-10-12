@@ -21,10 +21,15 @@ target_link_libraries(wpb_home_grab_server wpb_home_grab_logic)
 install(TARGETS wpb_home_objects_logic wpb_home_grab_logic DESTINATION lib)
 install(TARGETS wpb_home_objects_3d wpb_home_grab_server DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
-install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME}
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME}
   PATTERN "__pycache__" EXCLUDE PATTERN "*.pyc" EXCLUDE)
 ament_export_include_directories(include)
 ament_export_libraries(wpb_home_objects_logic wpb_home_grab_logic)
 ament_export_dependencies(rclcpp std_msgs sensor_msgs geometry_msgs visualization_msgs
   tf2_ros pcl_conversions pcl_ros wpr_simulation2)
+if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_object_tracking.py")
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(object_tracking test/test_object_tracking.py TIMEOUT 120
+    ENV BEHAVIORS_BIN_DIR=${CMAKE_CURRENT_BINARY_DIR} ROS_LOCALHOST_ONLY=1)
+endif()
 ament_package()

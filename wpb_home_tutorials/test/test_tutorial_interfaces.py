@@ -17,6 +17,7 @@ from rclpy.qos import qos_profile_sensor_data
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Imu, JointState, LaserScan, Image, RegionOfInterest, PointCloud2, PointField
 from std_msgs.msg import String
+from visualization_msgs.msg import MarkerArray
 from wpr_simulation2.msg import Object
 
 TOPICS = ['/kinect2/sd/points', '/objects_marker', '/cmd_vel', '/scan', '/imu', '/imu/data', '/wpb_home/mani_ctrl',
@@ -205,6 +206,105 @@ def test_grab_behavior_stale_target_and_stop_command(h):
     assert stopped(values[-1])
 
 
+def test_grab_behavior_invalid_targets_timeout_and_restart(h):
+    pub = h.publisher(Object, '/wpb_home/objects_3d')
+    control = h.publisher(String, '/wpb_home/behavior')
+    velocity = h.collect(Twist, '/cmd_vel')
+    arm = h.collect(JointState, '/wpb_home/mani_ctrl')
+    results = h.collect(String, '/wpb_home/grab_result')
+    commands = h.collect(String, '/wpb_home/behavior')
+    h.start(grab_behavior_executable(), detection_timeout=1.5)
+    h.wait(lambda: pub.get_subscription_count() > 0 and control.get_subscription_count() > 0)
+    h.pump()
+    assert not velocity and not arm and not results
+
+    # The server waits for a command; malformed or unreachable targets cannot
+    # advance the arm. Exercise each rejection while the task is waiting.
+    control.publish(String(data='start grab'))
+    h.wait(lambda: any(m.data == 'start objects' for m in commands))
+    invalid = [
+        Object(),
+        Object(x=[1.0], y=[], z=[0.7]),
+        Object(x=[float('nan')], y=[0.0], z=[0.7]),
+        Object(x=[0.5], y=[0.0], z=[0.7]),
+        Object(x=[2.1], y=[0.0], z=[0.7]),
+        Object(x=[1.0], y=[0.7], z=[0.7]),
+        Object(x=[1.0], y=[0.0], z=[-0.1]),
+        Object(x=[1.0], y=[0.0], z=[1.2]),
+    ]
+    for msg in invalid:
+        msg.header.frame_id = 'base_footprint'
+        pub.publish(msg)
+        h.pump(0.05)
+    wrong_frame = Object(x=[1.0], y=[0.0], z=[0.7])
+    wrong_frame.header.frame_id = 'camera'
+    pub.publish(wrong_frame)
+    h.wait(lambda: any(m.data == 'grab failed' for m in results))
+    assert not arm and all(stopped(m) for m in velocity)
+
+    # A failed task can start again. Cancellation must remain responsive while
+    # waiting for the lift, rather than blocking for the full lift_wait.
+    commands.clear()
+    control.publish(String(data='start grab'))
+    h.wait(lambda: any(m.data == 'start objects' for m in commands))
+    target = Object(x=[1.0], y=[0.0], z=[0.7])
+    target.header.frame_id = 'base_footprint'
+    h.wait(lambda: arm, tick=lambda: pub.publish(target))
+    failure_count = sum(m.data == 'grab failed' for m in results)
+    control.publish(String(data='grab stop'))
+    h.wait(lambda: sum(m.data == 'grab failed' for m in results) > failure_count,
+           timeout=1.0)
+    h.pump()
+    assert len(arm) == 1 and stopped(velocity[-1])
+
+
+def test_grab_behavior_alignment_limit_and_timeout(h):
+    pub = h.publisher(Object, '/wpb_home/objects_3d')
+    control = h.publisher(String, '/wpb_home/behavior')
+    velocity = h.collect(Twist, '/cmd_vel')
+    arm = h.collect(JointState, '/wpb_home/mani_ctrl')
+    results = h.collect(String, '/wpb_home/grab_result')
+    h.start(grab_behavior_executable(), auto_start=True, detection_timeout=1.0)
+    h.wait(lambda: pub.get_subscription_count() > 0 and control.get_subscription_count() > 0)
+    target = Object(x=[1.9], y=[-0.5], z=[0.7])
+    target.header.frame_id = 'base_footprint'
+    h.wait(lambda: any(m.linear.x > 0 for m in velocity), tick=lambda: pub.publish(target))
+    # A duplicate start during alignment must not reset its timeout. Send it
+    # before failure so it cannot legitimately start a new task afterwards.
+    control.publish(String(data='start grab'))
+    h.wait(lambda: any(m.data == 'grab failed' for m in results),
+           tick=lambda: pub.publish(target))
+    assert any(m.linear.x == pytest.approx(0.15) and
+               m.linear.y == pytest.approx(-0.15) for m in velocity)
+    assert all(abs(m.linear.x) <= 0.15 and abs(m.linear.y) <= 0.15 for m in velocity)
+    assert not arm
+    log = Path(h.processes[-1][1].name).read_text()
+    assert 'Grab already active; duplicate start ignored' in log
+    assert 'Object alignment timed out' in log
+    h.pump()
+    assert stopped(velocity[-1])
+
+
+@pytest.mark.parametrize('with_arm', [False, True])
+def test_grab_behavior_arm_and_approach_guards(h, with_arm):
+    pub = h.publisher(Object, '/wpb_home/objects_3d')
+    velocity = h.collect(Twist, '/cmd_vel')
+    results = h.collect(String, '/wpb_home/grab_result')
+    arm = h.collect(JointState, '/wpb_home/mani_ctrl') if with_arm else []
+    h.start(grab_behavior_executable(), auto_start=True, detection_timeout=1.0,
+            max_approach_time=0.1)
+    h.wait(lambda: pub.get_subscription_count() > 0)
+    target = Object(x=[1.0], y=[0.0], z=[0.7])
+    target.header.frame_id = 'base_footprint'
+    h.wait(lambda: any(m.data == 'grab failed' for m in results),
+           tick=lambda: pub.publish(target))
+    assert not arm and all(stopped(m) for m in velocity)
+    log = Path(h.processes[-1][1].name).read_text()
+    expected = ('Approach duration outside calibrated range' if with_arm else
+                'No valid object or arm driver before timeout')
+    assert expected in log
+
+
 @pytest.mark.skipif(not os.environ.get('DISPLAY'), reason='OpenCV face window requires a graphical display')
 def test_face_image_forwarding_and_valid_roi(h):
     images = h.publisher(Image, '/kinect2/qhd/image_raw', sensor=True)
@@ -238,6 +338,7 @@ def test_waypoint_fixed_name_and_arrival_log(h):
 def test_objects_plane_cluster_and_empty_frame(h):
     pub = h.publisher(PointCloud2, '/kinect2/sd/points', sensor=True)
     results = h.collect(Object, '/wpb_home/objects_3d')
+    markers = h.collect(MarkerArray, '/objects_marker')
     process = h.start('objects_publisher', auto_start=True)
     h.wait(lambda: pub.get_subscription_count() > 0)
     points = [(0.55 + i * 0.01, -0.45 + j * 0.01, 0.7, 0)
@@ -256,9 +357,14 @@ def test_objects_plane_cluster_and_empty_frame(h):
     assert obj.header.frame_id == 'base_footprint'
     assert obj.x[0] == pytest.approx(1.04, abs=0.02)
     assert obj.z[0] == pytest.approx(0.85, abs=0.02)
+    h.pump()
     results.clear()
     cloud.width = 0
     cloud.row_step = 0
     cloud.data = b''
-    h.wait(lambda: any(not m.x for m in results), tick=lambda: pub.publish(cloud))
+    markers.clear()
+    h.wait(lambda: any(len(m.markers) == 1 and m.markers[0].action == 3 for m in markers),
+           tick=lambda: pub.publish(cloud))
+    h.pump()
+    assert not results
     assert process.poll() is None
