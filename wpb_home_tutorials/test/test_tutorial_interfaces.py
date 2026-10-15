@@ -14,7 +14,7 @@ from ament_index_python.packages import get_package_prefix
 from rclpy.context import Context
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.qos import qos_profile_sensor_data
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Pose2D, Twist
 from sensor_msgs.msg import Imu, JointState, LaserScan, Image, RegionOfInterest, PointCloud2, PointField
 from std_msgs.msg import String
 from visualization_msgs.msg import MarkerArray
@@ -22,6 +22,7 @@ from wpr_simulation2.msg import Object
 
 TOPICS = ['/kinect2/sd/points', '/objects_marker', '/cmd_vel', '/scan', '/imu', '/imu/data', '/wpb_home/mani_ctrl',
           '/wpb_home/behavior', '/wpb_home/objects_3d', '/wpb_home/grab_result',
+          '/wpb_home/ctrl', '/wpb_home/pose_diff',
           '/kinect2/qhd/image_raw', '/face_detector_input', '/face_position',
           '/waterplus/navi_waypoint', '/waterplus/navi_result']
 
@@ -155,73 +156,143 @@ def grab_behavior_executable():
     return str(Path(get_package_prefix('wpb_home_behaviors')) / 'lib' / 'wpb_home_behaviors' / 'wpb_home_grab_server')
 
 
-def test_grab_behavior_full_sequence_and_continuous_stop(h):
-    pub = h.publisher(Object, '/wpb_home/objects_3d')
-    velocity = h.collect(Twist, '/cmd_vel')
-    arm = h.collect(JointState, '/wpb_home/mani_ctrl')
-    result = h.collect(String, '/wpb_home/grab_result')
-    commands = h.collect(String, '/wpb_home/behavior')
-    h.start(grab_behavior_executable(), auto_start=True, lift_wait=0.2, grip_wait=0.2, raise_wait=0.2,
-            retreat_time=0.3, approach_seconds_per_meter=1.0)
-    h.wait(lambda: pub.get_subscription_count() > 0)
-    pub.publish(Object())
-    h.pump()
-    assert not arm and all(stopped(m) for m in velocity)
-    msg = Object(x=[1.0], y=[0.0], z=[0.7])
-    msg.header.frame_id = 'base_footprint'
-    h.wait(lambda: any(m.data == 'grab done' for m in result),
-           tick=lambda: pub.publish(msg))
-    assert len(arm) == 3
-    assert list(arm[0].position) == pytest.approx([0.7, 0.15])
-    assert list(arm[1].position) == pytest.approx([0.7, 0.07])
-    assert list(arm[2].position) == pytest.approx([0.75, 0.07])
-    assert all(not m.velocity for m in arm)
-    assert any(m.linear.x > 0 for m in velocity)
-    assert any(m.linear.x < 0 for m in velocity)
-    assert sum(stopped(m) for m in velocity) >= 10
-    assert any(m.data == 'stop objects' for m in commands)
-    h.pump()
-    assert stopped(velocity[-1])
+class GrabIO:
+    def __init__(self, h, with_arm=True):
+        self.h = h
+        self.objects = h.publisher(Object, '/wpb_home/objects_3d')
+        self.control = h.publisher(String, '/wpb_home/behavior')
+        self.poses = h.publisher(Pose2D, '/wpb_home/pose_diff')
+        self.velocity = h.collect(Twist, '/cmd_vel')
+        self.arm = h.collect(JointState, '/wpb_home/mani_ctrl') if with_arm else []
+        self.results = h.collect(String, '/wpb_home/grab_result')
+        self.commands = h.collect(String, '/wpb_home/behavior')
+        self.resets = h.collect(String, '/wpb_home/ctrl')
+        self.pose = Pose2D(x=0.4, y=0.2, theta=0.1)
+        self.feedback = True
+        self.timer = h.node.create_timer(
+            0.02, lambda: self.poses.publish(self.pose) if self.feedback else None)
+
+    def start(self, **params):
+        defaults = dict(auto_start=True, lift_wait=0.1, grip_wait=0.1,
+                        raise_wait=0.1, reset_wait=0.05, stop_wait=0.1)
+        defaults.update(params)
+        self.h.start(grab_behavior_executable(), **defaults)
+        self.h.wait(lambda: self.objects.get_subscription_count() > 0 and
+                    self.poses.get_subscription_count() > 0 and
+                    self.control.get_subscription_count() > 0)
+
+    def object(self, x, y, z=0.7, stale=False):
+        msg = Object(x=[x], y=[y], z=[z])
+        msg.header.frame_id = 'base_footprint'
+        if not stale:
+            msg.header.stamp = self.h.node.get_clock().now().to_msg()
+        self.objects.publish(msg)
+
+    def speed(self, x, y=0.0):
+        return bool(self.velocity) and self.velocity[-1].linear.x == pytest.approx(x) and \
+            self.velocity[-1].linear.y == pytest.approx(y) and self.velocity[-1].angular.z == 0
+
+    def cancel(self):
+        self.control.publish(String(data='stop grab'))
+        self.h.wait(lambda: any(m.data == 'grab failed' for m in self.results))
 
 
-def test_grab_behavior_stale_target_and_stop_command(h):
-    pub = h.publisher(Object, '/wpb_home/objects_3d')
-    control = h.publisher(String, '/wpb_home/behavior')
-    values = h.collect(Twist, '/cmd_vel')
-    h.collect(JointState, '/wpb_home/mani_ctrl')
-    results = h.collect(String, '/wpb_home/grab_result')
-    h.start(grab_behavior_executable(), auto_start=True, object_timeout=0.15)
-    h.wait(lambda: pub.get_subscription_count() > 0)
-    msg = Object(x=[1.2], y=[0.1], z=[0.7])
-    msg.header.frame_id = 'base_footprint'
-    h.wait(lambda: any(m.linear.x > 0 for m in values), tick=lambda: pub.publish(msg))
-    # Drain queued DDS callbacks and wait for the observed timeout stop. A fixed
-    # sleep can end before queued target messages have reached the controller.
-    h.wait(lambda: values and stopped(values[-1]), timeout=1.0)
+@pytest.mark.parametrize('object_x', [0.98, 1.02])
+def test_grab_behavior_full_sequence_and_release(h, object_x):
+    g = GrabIO(h)
+    g.start()
+    h.wait(lambda: any(m.data == 'start objects' for m in g.commands))
+    g.object(object_x, 0.06, stale=True)
     h.pump(0.1)
-    assert stopped(values[-1])
-    h.wait(lambda: any(m.data == 'grab failed' for m in results),
-           tick=lambda: control.publish(String(data='stop grab')))
+    assert not g.arm
+    g.object(object_x, 0.06)
+    h.wait(lambda: len(g.resets) == 1)
+    h.pump(0.15)
+    assert all(stopped(m) for m in g.velocity)
+    assert g.arm[0].position == pytest.approx([0.74, 0.15])
+    g.pose = Pose2D()
+    h.wait(lambda: g.speed(0.1))
+    distance = 0.7 * (object_x - 0.7)
+    g.object(1.5, -0.2, z=0.9)  # Moving targets cannot replace the saved measurement.
+    g.pose = Pose2D(x=distance - 0.03)
+    h.pump(0.2)
+    assert g.speed(0.1) and len(g.arm) == 1
+    g.pose = Pose2D(x=distance + 0.03)
+    h.wait(lambda: g.speed(-0.1))
+    g.pose = Pose2D(x=distance - 0.005)
+    h.wait(lambda: len(g.resets) == 2)
+    h.pump(0.15)
+    assert g.speed(0.0)
+    assert g.arm[1].position == pytest.approx([0.74, 0.045])
+    assert g.arm[2].position == pytest.approx([0.79, 0.045])
+    g.pose = Pose2D()
+    h.wait(lambda: g.speed(-0.1))
+    g.pose = Pose2D(x=-distance + 0.03)
+    h.pump(0.2)
+    assert g.speed(-0.1)
+    g.pose = Pose2D(x=-distance - 0.03)
+    h.wait(lambda: g.speed(0.1))
+    g.pose = Pose2D(x=-distance + 0.005)
+    h.wait(lambda: any(m.data == 'grab done' for m in g.results))
+    h.pump(0.2)
+    count = len(g.velocity)
+    h.pump(0.2)
+    assert len(g.velocity) == count and g.speed(0.0)
+    assert len(g.arm) == 3 and all(not m.velocity for m in g.arm)
+    assert [m.data for m in g.resets] == ['pose_diff reset'] * 2
+    assert sum(m.data == 'start objects' for m in g.commands) == 1
+    assert all(m.linear.y == m.angular.z == 0 for m in g.velocity)
+
+
+def test_grab_behavior_odometry_alignment_and_recheck(h):
+    g = GrabIO(h)
+    g.start(lift_wait=18.0)
+    h.wait(lambda: any(m.data == 'start objects' for m in g.commands))
+    g.object(1.12, -0.08)
+    h.wait(lambda: len(g.resets) == 1)
+    h.pump(0.15)
+    assert all(stopped(m) for m in g.velocity)
+    g.pose = Pose2D()
+    h.wait(lambda: g.speed(0.05, -0.05))
+    g.object(1.0, 0.06, z=0.9)
+    g.pose = Pose2D(x=0.115, y=-0.03)
+    h.wait(lambda: g.speed(0.0, -0.05))
+    g.pose = Pose2D(x=0.12, y=-0.14)
+    h.wait(lambda: sum(m.data == 'start objects' for m in g.commands) == 2)
+    assert not g.arm and g.speed(0.0)
+    g.object(1.0, 0.06, stale=True)
+    h.pump(0.1)
+    assert not g.arm
+    g.object(1.0, 0.06, z=0.72)
+    h.wait(lambda: bool(g.arm))
+    assert g.arm[0].position == pytest.approx([0.76, 0.15])
+    assert len(g.resets) == 1
+    g.cancel()
+
+
+def test_grab_behavior_pose_feedback_timeout(h):
+    g = GrabIO(h)
+    g.start(pose_timeout=0.15)
+    h.wait(lambda: any(m.data == 'start objects' for m in g.commands))
+    g.object(1.2, 0.1)
+    h.wait(lambda: len(g.resets) == 1)
+    g.pose = Pose2D()
+    h.wait(lambda: g.speed(0.05, 0.05))
+    g.feedback = False
+    h.wait(lambda: any(m.data == 'grab failed' for m in g.results))
+    assert not g.arm
     h.pump()
-    assert stopped(values[-1])
+    assert g.speed(0.0)
+    assert 'Pose feedback timed out' in Path(h.processes[-1][1].name).read_text()
 
 
 def test_grab_behavior_invalid_targets_timeout_and_restart(h):
-    pub = h.publisher(Object, '/wpb_home/objects_3d')
-    control = h.publisher(String, '/wpb_home/behavior')
-    velocity = h.collect(Twist, '/cmd_vel')
-    arm = h.collect(JointState, '/wpb_home/mani_ctrl')
-    results = h.collect(String, '/wpb_home/grab_result')
-    commands = h.collect(String, '/wpb_home/behavior')
-    h.start(grab_behavior_executable(), detection_timeout=1.5)
-    h.wait(lambda: pub.get_subscription_count() > 0 and control.get_subscription_count() > 0)
+    g = GrabIO(h)
+    g.start(auto_start=False, detection_timeout=2.0, lift_wait=18.0)
     h.pump()
-    assert not velocity and not arm and not results
-
-    # The server waits for a command; malformed or unreachable targets cannot
-    # advance the arm. Exercise each rejection while the task is waiting.
-    control.publish(String(data='start grab'))
-    h.wait(lambda: any(m.data == 'start objects' for m in commands))
+    assert not g.velocity and not g.arm and not g.results
+    g.control.publish(String(data='start grab'))
+    h.wait(lambda: any(m.data == 'start objects' for m in g.commands))
     invalid = [
         Object(),
         Object(x=[1.0], y=[], z=[0.7]),
@@ -234,73 +305,68 @@ def test_grab_behavior_invalid_targets_timeout_and_restart(h):
     ]
     for msg in invalid:
         msg.header.frame_id = 'base_footprint'
-        pub.publish(msg)
+        msg.header.stamp = h.node.get_clock().now().to_msg()
+        g.objects.publish(msg)
         h.pump(0.05)
     wrong_frame = Object(x=[1.0], y=[0.0], z=[0.7])
     wrong_frame.header.frame_id = 'camera'
-    pub.publish(wrong_frame)
-    h.wait(lambda: any(m.data == 'grab failed' for m in results))
-    assert not arm and all(stopped(m) for m in velocity)
+    wrong_frame.header.stamp = h.node.get_clock().now().to_msg()
+    g.objects.publish(wrong_frame)
+    h.wait(lambda: any(m.data == 'grab failed' for m in g.results))
+    assert not g.arm and all(stopped(m) for m in g.velocity)
 
-    # A failed task can start again. Cancellation must remain responsive while
-    # waiting for the lift, rather than blocking for the full lift_wait.
-    commands.clear()
-    control.publish(String(data='start grab'))
-    h.wait(lambda: any(m.data == 'start objects' for m in commands))
-    target = Object(x=[1.0], y=[0.0], z=[0.7])
-    target.header.frame_id = 'base_footprint'
-    h.wait(lambda: arm, tick=lambda: pub.publish(target))
-    failure_count = sum(m.data == 'grab failed' for m in results)
-    control.publish(String(data='grab stop'))
-    h.wait(lambda: sum(m.data == 'grab failed' for m in results) > failure_count,
-           timeout=1.0)
+    g.commands.clear()
+    g.control.publish(String(data='start grab'))
+    h.wait(lambda: any(m.data == 'start objects' for m in g.commands))
+    g.object(1.0, 0.06)
+    h.wait(lambda: bool(g.arm))
+    failures = len(g.results)
+    g.control.publish(String(data='grab stop'))
+    h.wait(lambda: len(g.results) > failures, timeout=1.0)
     h.pump()
-    assert len(arm) == 1 and stopped(velocity[-1])
+    assert g.results[-1].data == 'grab failed'
+    assert len(g.arm) == 1 and g.speed(0.0)
 
 
-def test_grab_behavior_alignment_limit_and_timeout(h):
-    pub = h.publisher(Object, '/wpb_home/objects_3d')
-    control = h.publisher(String, '/wpb_home/behavior')
-    velocity = h.collect(Twist, '/cmd_vel')
-    arm = h.collect(JointState, '/wpb_home/mani_ctrl')
-    results = h.collect(String, '/wpb_home/grab_result')
-    h.start(grab_behavior_executable(), auto_start=True, detection_timeout=1.0)
-    h.wait(lambda: pub.get_subscription_count() > 0 and control.get_subscription_count() > 0)
-    target = Object(x=[1.9], y=[-0.5], z=[0.7])
-    target.header.frame_id = 'base_footprint'
-    h.wait(lambda: any(m.linear.x > 0 for m in velocity), tick=lambda: pub.publish(target))
-    # A duplicate start during alignment must not reset its timeout. Send it
-    # before failure so it cannot legitimately start a new task afterwards.
-    control.publish(String(data='start grab'))
-    h.wait(lambda: any(m.data == 'grab failed' for m in results),
-           tick=lambda: pub.publish(target))
-    assert any(m.linear.x == pytest.approx(0.15) and
-               m.linear.y == pytest.approx(-0.15) for m in velocity)
-    assert all(abs(m.linear.x) <= 0.15 and abs(m.linear.y) <= 0.15 for m in velocity)
-    assert not arm
+def test_grab_behavior_fixed_speed_and_motion_timeout(h):
+    g = GrabIO(h)
+    g.start(motion_timeout=0.5)
+    h.wait(lambda: any(m.data == 'start objects' for m in g.commands))
+    g.object(1.9, -0.5)
+    h.wait(lambda: len(g.resets) == 1)
+    g.pose = Pose2D()
+    h.wait(lambda: g.speed(0.05, -0.05))
+    g.control.publish(String(data='start grab'))
+    h.wait(lambda: any(m.data == 'grab failed' for m in g.results))
+    assert all(abs(m.linear.x) <= 0.05 and abs(m.linear.y) <= 0.05 for m in g.velocity)
+    assert not g.arm
     log = Path(h.processes[-1][1].name).read_text()
     assert 'Grab already active; duplicate start ignored' in log
-    assert 'Object alignment timed out' in log
+    assert 'Odometry movement timed out' in log
     h.pump()
-    assert stopped(velocity[-1])
+    assert g.speed(0.0)
+
+
+def test_grab_behavior_reset_timeout(h):
+    g = GrabIO(h)
+    g.start(motion_timeout=0.3)
+    h.wait(lambda: any(m.data == 'start objects' for m in g.commands))
+    g.object(1.0, 0.06)
+    h.wait(lambda: any(m.data == 'grab failed' for m in g.results))
+    assert all(stopped(m) for m in g.velocity)
+    assert 'Pose reset timed out' in Path(h.processes[-1][1].name).read_text()
 
 
 @pytest.mark.parametrize('with_arm', [False, True])
 def test_grab_behavior_arm_and_approach_guards(h, with_arm):
-    pub = h.publisher(Object, '/wpb_home/objects_3d')
-    velocity = h.collect(Twist, '/cmd_vel')
-    results = h.collect(String, '/wpb_home/grab_result')
-    arm = h.collect(JointState, '/wpb_home/mani_ctrl') if with_arm else []
-    h.start(grab_behavior_executable(), auto_start=True, detection_timeout=1.0,
-            max_approach_time=0.1)
-    h.wait(lambda: pub.get_subscription_count() > 0)
-    target = Object(x=[1.0], y=[0.0], z=[0.7])
-    target.header.frame_id = 'base_footprint'
-    h.wait(lambda: any(m.data == 'grab failed' for m in results),
-           tick=lambda: pub.publish(target))
-    assert not arm and all(stopped(m) for m in velocity)
+    g = GrabIO(h, with_arm=with_arm)
+    g.start(detection_timeout=1.0, max_forward_distance=0.1)
+    h.wait(lambda: any(m.data == 'start objects' for m in g.commands))
+    g.object(1.0, 0.06)
+    h.wait(lambda: any(m.data == 'grab failed' for m in g.results))
+    assert not g.arm and all(stopped(m) for m in g.velocity)
     log = Path(h.processes[-1][1].name).read_text()
-    expected = ('Approach duration outside calibrated range' if with_arm else
+    expected = ('Approach distance outside calibrated range' if with_arm else
                 'No valid object or arm driver before timeout')
     assert expected in log
 
