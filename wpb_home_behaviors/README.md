@@ -2,6 +2,10 @@
 
 启智机器人的物品检测和抓取行为。底盘、相机和机器人坐标变换由配套启动文件提供。
 
+物品检测节点通过 `/wpb_home/objects_3d` 发布 `wpb_home_msgs/msg/Object`，
+抓取节点订阅同一消息类型。消息定义由仓库内的 `wpb_home_msgs` 提供，
+无需依赖仿真软件包。
+
 ## 抓取控制
 
 `src/grab.cpp` 实现 `wpb_home_grab_server` 的抓取流程。默认等待

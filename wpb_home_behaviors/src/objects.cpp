@@ -15,7 +15,7 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/search/kdtree.h>
-#include <wpr_simulation2/msg/object.hpp>
+#include <wpb_home_msgs/msg/object.hpp>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -58,7 +58,7 @@ public:
         "/kinect2/sd/points", 
         rclcpp::SensorDataQoS().keep_last(1),
         std::bind(&ObjectsPublisher::pointcloudCallback, this, std::placeholders::_1));
-    objects_pub_ = this->create_publisher<wpr_simulation2::msg::Object>("/wpb_home/objects_3d", 10);
+    objects_pub_ = this->create_publisher<wpb_home_msgs::msg::Object>("/wpb_home/objects_3d", 10);
     marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/objects_marker", 10);
     behavior_sub_ = this->create_subscription<std_msgs::msg::String>(
         "/wpb_home/behavior", 10, std::bind(&ObjectsPublisher::behaviorCallback, this, std::placeholders::_1));
@@ -341,7 +341,7 @@ private:
 
   void publishObject(const stBoxMarker & box, const std_msgs::msg::Header & header)
   {
-    wpr_simulation2::msg::Object object_msg;
+    wpb_home_msgs::msg::Object object_msg;
     object_msg.header = header;
     object_msg.header.frame_id = "base_footprint";
     object_msg.name.push_back("object_0");
@@ -446,7 +446,7 @@ private:
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pc_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr behavior_sub_;
-  rclcpp::Publisher<wpr_simulation2::msg::Object>::SharedPtr objects_pub_;
+  rclcpp::Publisher<wpb_home_msgs::msg::Object>::SharedPtr objects_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   visualization_msgs::msg::Marker line_box;
   visualization_msgs::msg::Marker text_marker;

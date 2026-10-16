@@ -5,7 +5,7 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
-#include <wpr_simulation2/msg/object.hpp>
+#include <wpb_home_msgs/msg/object.hpp>
 
 namespace
 {
@@ -181,7 +181,7 @@ int run_grab(int argc, char ** argv, bool auto_start_default, const char * node_
         ctrl_pub->publish(reset_msg);
     };
 
-    auto ObjectCallback = [&](wpr_simulation2::msg::Object::ConstSharedPtr msg)
+    auto ObjectCallback = [&](wpb_home_msgs::msg::Object::ConstSharedPtr msg)
     {
         // 每轮只取重新开启检测后的一次有效测量，运动时不更新目标。
         if(grab_step != STEP_WAIT || !detection_requested || object_valid)
@@ -252,7 +252,7 @@ int run_grab(int argc, char ** argv, bool auto_start_default, const char * node_
         }
     };
 
-    auto object_sub = node->create_subscription<wpr_simulation2::msg::Object>(
+    auto object_sub = node->create_subscription<wpb_home_msgs::msg::Object>(
         "/wpb_home/objects_3d", 10, ObjectCallback);
     auto pose_diff_sub = node->create_subscription<geometry_msgs::msg::Pose2D>(
         "/wpb_home/pose_diff", 1, PoseDiffCallback);

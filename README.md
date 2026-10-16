@@ -46,11 +46,17 @@ mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
 git clone https://github.com/6-robot/wpb_home_ros2.git
 git clone https://github.com/6-robot/wp_map_tools.git
-git clone https://github.com/6-robot/wpr_simulation2.git
 git clone https://github.com/6-robot/wp_speech
 ```
 
 语音功能由独立的 [wp_speech](https://github.com/6-robot/wp_speech) 提供，以上命令将其克隆到同一个 `src` 中。获取全部源码后，再执行统一安装脚本。
+
+实物实验使用仓库内的 `wpb_home_msgs` 消息包，无需安装 `wpr_simulation2`。
+需要仿真时，可另行在工作空间的 `src` 中克隆：
+
+```bash
+git clone https://github.com/6-robot/wpr_simulation2.git
+```
 
 准备完成后，目录结构如下。各项目应使用配套版本。
 
@@ -59,7 +65,6 @@ ros2_ws/
 └── src/
     ├── wpb_home_ros2/
     ├── wp_map_tools/
-    ├── wpr_simulation2/
     └── wp_speech/
 ```
 
@@ -123,9 +128,14 @@ source ~/ros2_ws/install/setup.bash
 | [wpb_home_bringup](wpb_home_bringup/) | 底盘、机械臂和硬件接口，设备规则与启动文件 |
 | [wpb_home_tutorials](wpb_home_tutorials/) | 实验一至二十的参考程序、配套启动入口和 RViz 配置 |
 | [wpb_home_behaviors](wpb_home_behaviors/) | 三维物体检测与抓取行为节点 |
+| [wpb_home_msgs](wpb_home_msgs/) | 物体检测消息接口，供实物检测和抓取程序使用 |
 | [kinect2_ros2](kinect2_ros2/) | Kinect2 图像、深度配准、点云、标定与 RTAB-Map 示例 |
 
-配套工作空间还需包含 `wp_map_tools`、`wpr_simulation2` 和独立的 `wp_speech`。
+配套工作空间还需包含 `wp_map_tools` 和独立的 `wp_speech`。`wpr_simulation2` 为可选的仿真工程。
+
+物体位置话题 `/wpb_home/objects_3d` 的类型已改为 `wpb_home_msgs/msg/Object`。
+更新后需重新编译并重启所有使用该话题的实物节点；旧的
+`wpr_simulation2/msg/Object` 与新类型不能直接通信。
 
 ## 功能特性
 

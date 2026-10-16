@@ -18,7 +18,7 @@ from geometry_msgs.msg import Pose2D, Twist
 from sensor_msgs.msg import Imu, JointState, LaserScan, Image, RegionOfInterest, PointCloud2, PointField
 from std_msgs.msg import String
 from visualization_msgs.msg import MarkerArray
-from wpr_simulation2.msg import Object
+from wpb_home_msgs.msg import Object
 
 TOPICS = ['/kinect2/sd/points', '/objects_marker', '/cmd_vel', '/scan', '/imu', '/imu/data', '/wpb_home/mani_ctrl',
           '/wpb_home/behavior', '/wpb_home/objects_3d', '/wpb_home/grab_result',
@@ -173,7 +173,8 @@ class GrabIO:
             0.02, lambda: self.poses.publish(self.pose) if self.feedback else None)
 
     def start(self, **params):
-        defaults = dict(auto_start=True, lift_wait=0.1, grip_wait=0.1,
+        # These scenarios use a 6 cm lateral target explicitly.
+        defaults = dict(auto_start=True, align_y=0.06, lift_wait=0.1, grip_wait=0.1,
                         raise_wait=0.1, reset_wait=0.05, stop_wait=0.1)
         defaults.update(params)
         self.h.start(grab_behavior_executable(), **defaults)

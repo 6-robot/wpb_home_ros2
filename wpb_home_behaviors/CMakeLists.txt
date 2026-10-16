@@ -4,18 +4,18 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(ament_cmake REQUIRED)
 foreach(dep rclcpp std_msgs geometry_msgs sensor_msgs visualization_msgs tf2_ros
-    pcl_conversions pcl_ros wpr_simulation2)
+    pcl_conversions pcl_ros wpb_home_msgs)
   find_package(${dep} REQUIRED)
 endforeach()
 include_directories(include)
 add_library(wpb_home_objects_logic SHARED src/objects.cpp)
 ament_target_dependencies(wpb_home_objects_logic rclcpp std_msgs sensor_msgs geometry_msgs
-  visualization_msgs tf2_ros pcl_conversions pcl_ros wpr_simulation2)
+  visualization_msgs tf2_ros pcl_conversions pcl_ros wpb_home_msgs)
 add_executable(wpb_home_objects_3d src/objects_3d.cpp)
 target_link_libraries(wpb_home_objects_3d wpb_home_objects_logic)
 add_library(wpb_home_grab_logic SHARED src/grab.cpp)
 ament_target_dependencies(wpb_home_grab_logic rclcpp std_msgs sensor_msgs geometry_msgs
-  wpr_simulation2)
+  wpb_home_msgs)
 add_executable(wpb_home_grab_server src/grab_server.cpp)
 target_link_libraries(wpb_home_grab_server wpb_home_grab_logic)
 install(TARGETS wpb_home_objects_logic wpb_home_grab_logic DESTINATION lib)
@@ -26,7 +26,7 @@ install(DIRECTORY launch DESTINATION share/${PROJECT_NAME}
 ament_export_include_directories(include)
 ament_export_libraries(wpb_home_objects_logic wpb_home_grab_logic)
 ament_export_dependencies(rclcpp std_msgs sensor_msgs geometry_msgs visualization_msgs
-  tf2_ros pcl_conversions pcl_ros wpr_simulation2)
+  tf2_ros pcl_conversions pcl_ros wpb_home_msgs)
 if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_object_tracking.py")
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(object_tracking test/test_object_tracking.py TIMEOUT 120

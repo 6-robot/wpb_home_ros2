@@ -3,7 +3,7 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
-#include <wpr_simulation2/msg/object.hpp>
+#include <wpb_home_msgs/msg/object.hpp>
 #include <chrono>
 #include <cmath>
 
@@ -70,7 +70,7 @@ void PoseDiffCallback(const geometry_msgs::msg::Pose2D::SharedPtr msg)
     }
 }
 
-void ObjectCallback(const wpr_simulation2::msg::Object::SharedPtr msg)
+void ObjectCallback(const wpb_home_msgs::msg::Object::SharedPtr msg)
 {
     if(grab_step == STEP_WAIT && detection_requested &&
        !msg->x.empty() && !msg->y.empty() && !msg->z.empty() &&
@@ -87,7 +87,7 @@ int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
 
-    node = std::make_shared<rclcpp::Node>("grab_node");
+    node = std::make_shared<rclcpp::Node>("grab_object_node");
 
     cmd_pub = node->create_publisher<std_msgs::msg::String>(
         "/wpb_home/behavior", 
@@ -107,7 +107,7 @@ int main(int argc, char** argv)
     auto pose_diff_sub = node->create_subscription<geometry_msgs::msg::Pose2D>(
         "/wpb_home/pose_diff", 1, PoseDiffCallback
     );
-    auto object_sub = node->create_subscription<wpr_simulation2::msg::Object>(
+    auto object_sub = node->create_subscription<wpb_home_msgs::msg::Object>(
         "/wpb_home/objects_3d", 
         10, 
         ObjectCallback
