@@ -153,7 +153,7 @@ def test_imu_proportional_heading_command(h):
 
 
 def grab_behavior_executable():
-    return str(Path(get_package_prefix('wpb_home_behaviors')) / 'lib' / 'wpb_home_behaviors' / 'wpb_home_grab_server')
+    return str(Path(get_package_prefix('wpb_home_behaviors')) / 'lib' / 'wpb_home_behaviors' / 'wpb_home_grab')
 
 
 class GrabIO:
@@ -406,7 +406,8 @@ def test_objects_plane_cluster_and_empty_frame(h):
     pub = h.publisher(PointCloud2, '/kinect2/sd/points', sensor=True)
     results = h.collect(Object, '/wpb_home/objects_3d')
     markers = h.collect(MarkerArray, '/objects_marker')
-    process = h.start('objects_publisher', auto_start=True)
+    executable = Path(get_package_prefix('wpb_home_behaviors')) / 'lib' / 'wpb_home_behaviors' / 'wpb_home_objects_3d'
+    process = h.start(str(executable), auto_start=True)
     h.wait(lambda: pub.get_subscription_count() > 0)
     points = [(0.55 + i * 0.01, -0.45 + j * 0.01, 0.7, 0)
               for i in range(90) for j in range(90)]

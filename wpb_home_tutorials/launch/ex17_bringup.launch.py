@@ -49,9 +49,9 @@ def generate_launch_description():
         launch_arguments={'enable_qhd_points': 'true'}.items(),
     )
 
-    objects_publisher_cmd = Node(
-        package='wpb_home_tutorials',
-        executable='objects_publisher',
+    objects_3d_cmd = Node(
+        package='wpb_home_behaviors',
+        executable='wpb_home_objects_3d',
         output='screen',
         parameters=[{'use_sim_time': False, 'auto_start': True}],
     )
@@ -67,7 +67,7 @@ def generate_launch_description():
     ld.add_action(wpb_home_core_cmd)
     ld.add_action(robot_state_publisher_cmd)
     ld.add_action(kinect2_cmd)
-    ld.add_action(objects_publisher_cmd)
+    ld.add_action(objects_3d_cmd)
     ld.add_action(rviz_cmd)
 
     return ld

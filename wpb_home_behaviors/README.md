@@ -6,9 +6,16 @@
 抓取节点订阅同一消息类型。消息定义由仓库内的 `wpb_home_msgs` 提供，
 无需依赖仿真软件包。
 
+## 物品检测
+
+`src/objects_3d.cpp` 包含完整检测逻辑和程序入口，编译后的可执行程序和节点名均为
+`wpb_home_objects_3d`。实验十七和综合应用直接启动该节点。
+默认等待 `/wpb_home/behavior` 上的 `start objects` 指令；`auto_start=true` 时自动开始。
+收到 `start objects` 时重新进入搜索模式，收到 `stop objects` 时停止检测。
+
 ## 抓取控制
 
-`src/grab.cpp` 实现 `wpb_home_grab_server` 的抓取流程。默认等待
+`src/grab.cpp` 编译为 `wpb_home_grab`，运行时的节点名也是 `wpb_home_grab`。默认等待
 `/wpb_home/behavior` 上的 `start grab` 指令；`auto_start=true` 时自动开始。
 支持 `stop grab`、`grab stop`，并通过 `/wpb_home/grab_result` 发布
 `grab done` 或 `grab failed`。完成、失败或空闲时释放底盘速度控制。

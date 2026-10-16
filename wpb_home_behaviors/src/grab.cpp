@@ -1,4 +1,3 @@
-#include "wpb_home_behaviors/grab.hpp"
 #include "wpb_home_behaviors/runtime.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
@@ -68,10 +67,10 @@ enum GrabStep
 };
 }
 
-int run_grab(int argc, char ** argv, bool auto_start_default, const char * node_name)
+int main(int argc, char ** argv)
 {
     tutorial::init(argc, argv);
-    auto node = std::make_shared<rclcpp::Node>(node_name);
+    auto node = std::make_shared<rclcpp::Node>("wpb_home_grab");
 
     GrabParameters p;
     auto positive = [&](const char * name, double & value)
@@ -120,7 +119,7 @@ int run_grab(int argc, char ** argv, bool auto_start_default, const char * node_
     auto mani_pub = node->create_publisher<sensor_msgs::msg::JointState>("/wpb_home/mani_ctrl", 10);
     auto result_pub = node->create_publisher<std_msgs::msg::String>("/wpb_home/grab_result", 10);
 
-    const bool auto_start = node->declare_parameter("auto_start", auto_start_default);
+    const bool auto_start = node->declare_parameter("auto_start", false);
     GrabStep grab_step = auto_start ? STEP_WAIT : STEP_IDLE;
     double object_x = 0.0;
     double object_y = 0.0;

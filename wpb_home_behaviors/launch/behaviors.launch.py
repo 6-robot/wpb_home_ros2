@@ -15,6 +15,6 @@ def generate_launch_description():
                  'stable_distance_threshold': 0.05,
                  'lock_radius': 0.10,
              }]),
-        Node(package='wpb_home_behaviors', executable='wpb_home_grab_server',
+        Node(package='wpb_home_behaviors', executable='wpb_home_grab',
              output='screen'),
     ])

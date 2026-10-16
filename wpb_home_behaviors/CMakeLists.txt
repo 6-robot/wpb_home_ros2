@@ -8,23 +8,17 @@ foreach(dep rclcpp std_msgs geometry_msgs sensor_msgs visualization_msgs tf2_ros
   find_package(${dep} REQUIRED)
 endforeach()
 include_directories(include)
-add_library(wpb_home_objects_logic SHARED src/objects.cpp)
-ament_target_dependencies(wpb_home_objects_logic rclcpp std_msgs sensor_msgs geometry_msgs
-  visualization_msgs tf2_ros pcl_conversions pcl_ros wpb_home_msgs)
 add_executable(wpb_home_objects_3d src/objects_3d.cpp)
-target_link_libraries(wpb_home_objects_3d wpb_home_objects_logic)
-add_library(wpb_home_grab_logic SHARED src/grab.cpp)
-ament_target_dependencies(wpb_home_grab_logic rclcpp std_msgs sensor_msgs geometry_msgs
+ament_target_dependencies(wpb_home_objects_3d rclcpp std_msgs sensor_msgs geometry_msgs
+  visualization_msgs tf2_ros pcl_conversions pcl_ros wpb_home_msgs)
+add_executable(wpb_home_grab src/grab.cpp)
+ament_target_dependencies(wpb_home_grab rclcpp std_msgs sensor_msgs geometry_msgs
   wpb_home_msgs)
-add_executable(wpb_home_grab_server src/grab_server.cpp)
-target_link_libraries(wpb_home_grab_server wpb_home_grab_logic)
-install(TARGETS wpb_home_objects_logic wpb_home_grab_logic DESTINATION lib)
-install(TARGETS wpb_home_objects_3d wpb_home_grab_server DESTINATION lib/${PROJECT_NAME})
+install(TARGETS wpb_home_objects_3d wpb_home_grab DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME}
   PATTERN "__pycache__" EXCLUDE PATTERN "*.pyc" EXCLUDE)
 ament_export_include_directories(include)
-ament_export_libraries(wpb_home_objects_logic wpb_home_grab_logic)
 ament_export_dependencies(rclcpp std_msgs sensor_msgs geometry_msgs visualization_msgs
   tf2_ros pcl_conversions pcl_ros wpb_home_msgs)
 if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_object_tracking.py")
