@@ -203,6 +203,8 @@ ros2 launch kinect2_bridge kinect2_bridge.launch.py
 
 在 RViz2 中订阅 `/kinect2/sd/points` 或 `/kinect2/qhd/points` 查看彩色点云。
 
+QHD/HD 深度图会优先使用相机序列号目录下的完整标定文件（`calib_color.yaml`、`calib_ir.yaml`、`calib_pose.yaml`）。缺少完整标定时，驱动自动使用 libfreenect2 的出厂配准数据，在 CPU 上把深度映射到彩色图像，避免使用零平移外参造成 RGB 与点云错位。遮挡边缘和无有效深度的位置仍可能有空洞；需要准确的 RGB 与 IR 坐标系之间的 TF 时，应进行本机外参标定。
+
 **手柄建图**
 
 ```bash

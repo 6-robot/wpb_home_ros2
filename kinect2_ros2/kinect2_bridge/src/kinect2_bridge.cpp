@@ -26,6 +26,7 @@
 #include <chrono>
 #include <sys/stat.h>
 #include <memory>
+#include <cstring>
 
 #if defined(__linux__)
 #include <sys/prctl.h>
@@ -67,6 +68,7 @@
 #include <libfreenect2/registration.h>
 
 #include <kinect2_bridge/kinect2_definitions.h>
+#include <kinect2_bridge/factory_registration.h>
 #include <kinect2_registration/kinect2_registration.h>
 
 // class Kinect2Bridge
@@ -81,6 +83,7 @@ private:
   cv::Mat cameraMatrixColor, distortionColor, cameraMatrixLowRes, cameraMatrixIr, distortionIr, cameraMatrixDepth, distortionDepth;
   cv::Mat rotation, translation;
   cv::Mat map1Color, map2Color, map1Ir, map2Ir, map1LowRes, map2LowRes;
+  cv::Mat mapFactoryColor, mapFactoryLowRes;
   cv::Mat lookupX, lookupY;
 
   std::vector<std::thread> threads;
@@ -101,7 +104,8 @@ private:
   libfreenect2::Freenect2Device::IrCameraParams irParams;
 
   rclcpp::Node::SharedPtr node;
-  DepthRegistration *depthRegLowRes, *depthRegHighRes;
+  DepthRegistration *depthRegLowRes = nullptr, *depthRegHighRes = nullptr;
+  bool useFactoryRegistration = true;
 
   size_t frameColor, frameIrDepth, pubFrameColor, pubFrameIrDepth;
   rclcpp::Time lastColor, lastDepth;
@@ -155,6 +159,10 @@ public:
       nextIrDepth(false), depthShift(0), running(false), deviceActive(false), clientConnected(false)
   {
     status.resize(COUNT, UNSUBCRIBED);
+    // Factory depth-to-color registration also works without an RGB subscriber.
+    // The pixel colors do not affect its depth mapping.
+    std::memset(color.data, 0, sizeColor.width * sizeColor.height * 4);
+    color.format = libfreenect2::Frame::BGRX;
   }
 
   bool start()
@@ -379,6 +387,14 @@ private:
     {
       RCLCPP_ERROR_STREAM(node->get_logger(),"Unknown registration method: "<<method);
       return false;
+    }
+
+    if(useFactoryRegistration)
+    {
+      registration = new libfreenect2::Registration(irParams, colorParams);
+      RCLCPP_INFO(node->get_logger(),
+        "QHD/HD depth registration: libfreenect2 factory mapping (CPU).");
+      return true;
     }
 
     depthRegLowRes = DepthRegistration::New(reg);
@@ -658,19 +674,33 @@ private:
 
     struct stat fileStat;
     bool calibDirNotFound = stat(calibPath.c_str(), &fileStat) != 0 || !S_ISDIR(fileStat.st_mode);
-    if(calibDirNotFound || !loadCalibrationFile(calibPath + K2_CALIB_COLOR, cameraMatrixColor, distortionColor))
+    const bool colorCalibrated = !calibDirNotFound &&
+      loadCalibrationFile(calibPath + K2_CALIB_COLOR, cameraMatrixColor, distortionColor);
+    if(!colorCalibrated)
     {
       RCLCPP_WARN(node->get_logger(),"using sensor defaults for color intrinsic parameters.");
     }
 
-    if(calibDirNotFound || !loadCalibrationFile(calibPath + K2_CALIB_IR, cameraMatrixDepth, distortionDepth))
+    const bool irCalibrated = !calibDirNotFound &&
+      loadCalibrationFile(calibPath + K2_CALIB_IR, cameraMatrixDepth, distortionDepth);
+    if(!irCalibrated)
     {
       RCLCPP_WARN(node->get_logger(),"using sensor defaults for ir intrinsic parameters.");
     }
 
-    if(calibDirNotFound || !loadCalibrationPoseFile(calibPath + K2_CALIB_POSE, rotation, translation))
+    const bool poseCalibrated = !calibDirNotFound &&
+      loadCalibrationPoseFile(calibPath + K2_CALIB_POSE, rotation, translation);
+    if(!poseCalibrated)
     {
       RCLCPP_WARN(node->get_logger(),"using defaults for rotation and translation.");
+    }
+
+    useFactoryRegistration = !(colorCalibrated && irCalibrated && poseCalibrated);
+    if(useFactoryRegistration)
+    {
+      RCLCPP_WARN(node->get_logger(),
+        "No complete stereo calibration for sensor %s; using factory mapping for QHD/HD. "
+        "Accurate RGB-to-IR TF still requires extrinsic calibration.", sensor.c_str());
     }
 
     if(calibDirNotFound || !loadCalibrationDepthFile(calibPath + K2_CALIB_DEPTH, depthShift))
@@ -689,6 +719,15 @@ private:
     cv::initUndistortRectifyMap(cameraMatrixColor, distortionColor, cv::Mat(), cameraMatrixColor, sizeColor, mapType, map1Color, map2Color);
     cv::initUndistortRectifyMap(cameraMatrixIr, distortionIr, cv::Mat(), cameraMatrixIr, sizeIr, mapType, map1Ir, map2Ir);
     cv::initUndistortRectifyMap(cameraMatrixColor, distortionColor, cv::Mat(), cameraMatrixLowRes, sizeLowRes, mapType, map1LowRes, map2LowRes);
+    if(useFactoryRegistration)
+    {
+      // Float maps support nearest-neighbor depth sampling without the
+      // interpolation-table offsets in the fixed-point RGB maps.
+      cv::initUndistortRectifyMap(cameraMatrixColor, distortionColor, cv::Mat(),
+        cameraMatrixColor, sizeColor, CV_32FC2, mapFactoryColor, cv::noArray());
+      cv::initUndistortRectifyMap(cameraMatrixColor, distortionColor, cv::Mat(),
+        cameraMatrixLowRes, sizeLowRes, CV_32FC2, mapFactoryLowRes, cv::noArray());
+    }
 
     RCLCPP_DEBUG(node->get_logger(),"camera parameters used:");
     RCLCPP_DEBUG_STREAM(node->get_logger(),"camera matrix color:" FG_CYAN << std::endl << cameraMatrixColor << NO_COLOR);
@@ -1245,17 +1284,48 @@ private:
     {
       cv::remap(depthShifted, images[DEPTH_SD_RECT], map1Ir, map2Ir, cv::INTER_NEAREST);
     }
-    if(status[DEPTH_QHD])
+    if(useFactoryRegistration && (status[DEPTH_QHD] || status[DEPTH_HD]))
     {
-      lockRegLowRes.lock();
-      depthRegLowRes->registerDepth(depthShifted, images[DEPTH_QHD]);
-      lockRegLowRes.unlock();
+      // Factory mapping must receive native (unflipped) IR pixels. bigdepth is
+      // in native color pixels; crop its guard rows, flip, then apply exactly
+      // the same rectification maps as the published RGB images.
+      cv::Mat factoryInput = depth;
+      if(depthShift != 0.0)
+      {
+        depth.convertTo(factoryInput, CV_32F, 1.0, depthShift);
+        factoryInput.setTo(0, depth <= 0);
+      }
+      libfreenect2::Frame depthFrame(sizeIr.width, sizeIr.height, 4, factoryInput.data);
+      libfreenect2::Frame undistorted(sizeIr.width, sizeIr.height, 4);
+      libfreenect2::Frame registered(sizeIr.width, sizeIr.height, 4);
+      libfreenect2::Frame bigDepth(sizeColor.width, sizeColor.height + 2, 4);
+      {
+        std::lock_guard<std::mutex> lock(lockRegSD);
+        registration->apply(&color, &depthFrame, &undistorted, &registered, true, &bigDepth);
+      }
+      const cv::Mat colorDepth = kinect2_bridge::factoryDepthToMirroredColor(
+        cv::Mat(sizeColor.height + 2, sizeColor.width, CV_32FC1, bigDepth.data));
+      if(status[DEPTH_QHD])
+      {
+        cv::remap(colorDepth, images[DEPTH_QHD], mapFactoryLowRes, cv::Mat(), cv::INTER_NEAREST);
+      }
+      if(status[DEPTH_HD])
+      {
+        cv::remap(colorDepth, images[DEPTH_HD], mapFactoryColor, cv::Mat(), cv::INTER_NEAREST);
+      }
     }
-    if(status[DEPTH_HD])
+    else if(!useFactoryRegistration)
     {
-      lockRegHighRes.lock();
-      depthRegHighRes->registerDepth(depthShifted, images[DEPTH_HD]);
-      lockRegHighRes.unlock();
+      if(status[DEPTH_QHD])
+      {
+        std::lock_guard<std::mutex> lock(lockRegLowRes);
+        depthRegLowRes->registerDepth(depthShifted, images[DEPTH_QHD]);
+      }
+      if(status[DEPTH_HD])
+      {
+        std::lock_guard<std::mutex> lock(lockRegHighRes);
+        depthRegHighRes->registerDepth(depthShifted, images[DEPTH_HD]);
+      }
     }
   }
 

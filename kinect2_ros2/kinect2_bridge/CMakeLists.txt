@@ -102,4 +102,10 @@ install(DIRECTORY
 # )
 
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_factory_registration test/test_factory_registration.cpp)
+  target_link_libraries(test_factory_registration ${OpenCV_LIBRARIES})
+endif()
+
 ament_package()
