@@ -259,7 +259,7 @@ colcon build --packages-select wpb_home_tutorials
 
 每次新建或更新地图后，重新编译教程包，将地图安装到共享目录。
 
-航点保存在主目录 **`~/waypoint.xml`**，通过 `wp_map_tools` 的 `add_waypoint.launch.py` 编辑、`wp_saver` 保存。
+航点保存在主目录 **`~/waypoints.xml`**，通过 `wp_map_tools` 的 `add_waypoint.launch.py` 编辑、`wp_saver` 保存。
 
 ## 实验示例
 

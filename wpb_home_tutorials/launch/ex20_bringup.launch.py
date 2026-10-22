@@ -27,7 +27,7 @@ def generate_launch_description():
     tutorials_dir = get_package_share_directory('wpb_home_tutorials')
     rviz_file = os.path.join(tutorials_dir, 'rviz', 'fetch.rviz')
     map_file = os.path.join(tutorials_dir, 'maps', 'map.yaml')
-    waypoints_file = os.path.expanduser('~/waypoint.xml')
+    waypoints_file = os.path.expanduser('~/waypoints.xml')
     nav_params_file = os.path.join(tutorials_dir, 'config', 'nav2_params.yaml')
 
     check_files_cmd = OpaqueFunction(function=check_files, args=[map_file, waypoints_file])

@@ -44,7 +44,7 @@ def generate_launch_description():
         package='wp_map_tools',
         executable='wp_edit_node',
         name='wp_edit_node',
-        parameters=[{'load': os.path.expanduser('~/waypoint.xml')}]
+        parameters=[{'load': os.path.expanduser('~/waypoints.xml')}]
     )
 
     wp_navi_server_cmd = Node(
